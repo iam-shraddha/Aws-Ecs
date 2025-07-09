@@ -11,6 +11,7 @@ resource "aws_vpc" "main" {
   cidr_block           = "10.0.0.0/16"
   enable_dns_support   = true
   enable_dns_hostnames = true
+
   tags = {
     Name = "ecs-vpc"
   }
@@ -20,10 +21,17 @@ resource "aws_internet_gateway" "igw" {
   vpc_id = aws_vpc.main.id
 }
 
-resource "aws_subnet" "public" {
+resource "aws_subnet" "public_1" {
   vpc_id                  = aws_vpc.main.id
   cidr_block              = "10.0.1.0/24"
   availability_zone       = data.aws_availability_zones.available.names[0]
+  map_public_ip_on_launch = true
+}
+
+resource "aws_subnet" "public_2" {
+  vpc_id                  = aws_vpc.main.id
+  cidr_block              = "10.0.2.0/24"
+  availability_zone       = data.aws_availability_zones.available.names[1]
   map_public_ip_on_launch = true
 }
 
@@ -36,8 +44,13 @@ resource "aws_route_table" "public_rt" {
   }
 }
 
-resource "aws_route_table_association" "public_assoc" {
-  subnet_id      = aws_subnet.public.id
+resource "aws_route_table_association" "public_1_assoc" {
+  subnet_id      = aws_subnet.public_1.id
+  route_table_id = aws_route_table.public_rt.id
+}
+
+resource "aws_route_table_association" "public_2_assoc" {
+  subnet_id      = aws_subnet.public_2.id
   route_table_id = aws_route_table.public_rt.id
 }
 
@@ -45,8 +58,8 @@ resource "aws_route_table_association" "public_assoc" {
 # Security Group
 # -----------------------------
 resource "aws_security_group" "ecs_sg" {
-  name        = "ecs-sg"
-  vpc_id      = aws_vpc.main.id
+  name   = "ecs-sg"
+  vpc_id = aws_vpc.main.id
 
   ingress {
     from_port   = 3000
@@ -108,7 +121,10 @@ resource "aws_lb" "app_alb" {
   name               = "ecs-app-alb"
   load_balancer_type = "application"
   security_groups    = [aws_security_group.ecs_sg.id]
-  subnets            = [aws_subnet.public.id]
+  subnets            = [
+    aws_subnet.public_1.id,
+    aws_subnet.public_2.id
+  ]
 }
 
 resource "aws_lb_target_group" "app_tg" {
@@ -117,6 +133,7 @@ resource "aws_lb_target_group" "app_tg" {
   protocol    = "HTTP"
   vpc_id      = aws_vpc.main.id
   target_type = "ip"
+
   health_check {
     path                = "/"
     interval            = 30
@@ -149,38 +166,34 @@ resource "aws_ecs_task_definition" "app" {
   memory                   = "512"
   execution_role_arn       = aws_iam_role.ecs_task_execution_role.arn
 
-  container_definitions = jsonencode([
-    {
-      name      = var.app_name
-      image     = "${aws_ecr_repository.app_repo.repository_url}:latest",
-      essential = true,
-      portMappings = [
-        {
-          containerPort = 3000,
-          hostPort      = 3000,
-          protocol      = "tcp"
-        }
-      ],
-      environment = [
-        {
-          name  = "PORT",
-          value = "3000"
-        },
-        {
-          name  = "PUBLISHABLE_KEY",
-          value = var.stripe_publishable_key
-        },
-        {
-          name  = "SECRET_KEY",
-          value = var.stripe_secret_key
-        }
-      ]
-    }
-  ])
+  container_definitions = jsonencode([{
+    name      = var.app_name
+    image     = "${aws_ecr_repository.app_repo.repository_url}:latest"
+    essential = true
+    portMappings = [{
+      containerPort = 3000
+      hostPort      = 3000
+      protocol      = "tcp"
+    }],
+    environment = [
+      {
+        name  = "PORT"
+        value = "3000"
+      },
+      {
+        name  = "PUBLISHABLE_KEY"
+        value = var.stripe_publishable_key
+      },
+      {
+        name  = "SECRET_KEY"
+        value = var.stripe_secret_key
+      }
+    ]
+  }])
 }
 
 # -----------------------------
-# ECS Service (Fargate + ALB)
+# ECS Service
 # -----------------------------
 resource "aws_ecs_service" "app" {
   name            = var.app_name
@@ -190,9 +203,12 @@ resource "aws_ecs_service" "app" {
   desired_count   = 1
 
   network_configuration {
-    subnets         = [aws_subnet.public.id]
+    subnets         = [
+      aws_subnet.public_1.id,
+      aws_subnet.public_2.id
+    ]
     assign_public_ip = true
-    security_groups = [aws_security_group.ecs_sg.id]
+    security_groups  = [aws_security_group.ecs_sg.id]
   }
 
   load_balancer {
@@ -205,7 +221,7 @@ resource "aws_ecs_service" "app" {
 }
 
 # -----------------------------
-# Auto Scaling Config
+# Auto Scaling
 # -----------------------------
 resource "aws_appautoscaling_target" "ecs_scale_target" {
   max_capacity       = 2
