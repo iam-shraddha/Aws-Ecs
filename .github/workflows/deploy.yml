@@ -1,0 +1,58 @@
+
+name: Deploy to ECS
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '**.js'
+      - 'Dockerfile'
+      - '.github/workflows/deploy.yml'
+      - 'package.json'
+      - 'client/**'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    env:
+      AWS_REGION: ap-south-1
+      ECR_REPOSITORY: node-app
+      CONTAINER_NAME: node-app
+
+    steps:
+      - name: 📦 Checkout Code
+        uses: actions/checkout@v3
+
+      - name: 🔐 Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: 🐳 Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: 🔧 Extract ECR Repository URI
+        id: ecr
+        run: |
+          echo "REPO_URI=$(aws ecr describe-repositories --repository-names $ECR_REPOSITORY --region $AWS_REGION --query 'repositories[0].repositoryUri' --output text)" >> $GITHUB_ENV
+
+      - name: 🏗️ Build and Tag Docker Image
+        run: |
+          docker build -t $ECR_REPOSITORY .
+          docker tag $ECR_REPOSITORY:latest $REPO_URI:latest
+
+      - name: 🚀 Push Docker Image to ECR
+        run: |
+          docker push $REPO_URI:latest
+
+      - name: 🔁 Update ECS Service
+        run: |
+          aws ecs update-service \
+            --cluster $ECR_REPOSITORY \
+            --service $ECR_REPOSITORY \
+            --force-new-deployment \
+            --region $AWS_REGION
