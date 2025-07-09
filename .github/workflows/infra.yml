@@ -16,9 +16,6 @@ jobs:
 
     env:
       TF_IN_AUTOMATION: true
-      AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      AWS_REGION: ap-south-1
 
     steps:
       - name: 🧾 Checkout Code
@@ -31,6 +28,10 @@ jobs:
 
       - name: 🔁 Terraform Init
         run: terraform init
+        env:
+          AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ap-south-1
 
       - name: ✅ Terraform Validate
         run: terraform validate
@@ -40,9 +41,17 @@ jobs:
           terraform plan -out=tfplan \
             -var="stripe_publishable_key=${{ secrets.PUBLISHABLE_KEY }}" \
             -var="stripe_secret_key=${{ secrets.SECRET_KEY }}"
+        env:
+          AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ap-south-1
 
       - name: 🚀 Terraform Apply
         run: terraform apply -auto-approve tfplan
+        env:
+          AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ap-south-1
 
       - name: 🌍 Show Load Balancer DNS
         run: terraform output alb_dns_name
