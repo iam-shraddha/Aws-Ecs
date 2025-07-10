@@ -7,7 +7,7 @@ on:
       - '**.js'
       - 'Dockerfile'
       - '.github/workflows/deploy.yml'
-      - 'package.json'
+      - 'package.json' 
       - 'client/**'
 
 jobs:
