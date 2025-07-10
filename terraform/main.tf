@@ -13,7 +13,7 @@ resource "aws_vpc" "main" {
   enable_dns_hostnames = true
 
   tags = {
-    Name = "ecs-vpc-v2"
+    Name = "ecs-vpc"
   }
 }
 
@@ -58,7 +58,7 @@ resource "aws_route_table_association" "public_2_assoc" {
 # Security Group
 # -----------------------------
 resource "aws_security_group" "ecs_sg" {
-  name   = "ecs-sg-v2"
+  name   = "ecs-sg"
   vpc_id = aws_vpc.main.id
 
   ingress {
@@ -87,15 +87,15 @@ resource "aws_security_group" "ecs_sg" {
 # ECS & ECR
 # -----------------------------
 resource "aws_ecr_repository" "app_repo" {
-  name = "node-app-v2"
+  name = var.app_name
 }
 
 resource "aws_ecs_cluster" "cluster" {
-  name = "node-app-v2"
+  name = var.app_name
 }
 
 resource "aws_iam_role" "ecs_task_execution_role" {
-  name = "ecsTaskExecutionRoleV2"
+  name = "ecsTaskExecutionRole"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17",
@@ -118,7 +118,7 @@ resource "aws_iam_role_policy_attachment" "ecs_task_execution" {
 # Load Balancer
 # -----------------------------
 resource "aws_lb" "app_alb" {
-  name               = "ecs-app-alb-v2"
+  name               = "ecs-app-alb"
   load_balancer_type = "application"
   security_groups    = [aws_security_group.ecs_sg.id]
   subnets            = [
@@ -128,7 +128,7 @@ resource "aws_lb" "app_alb" {
 }
 
 resource "aws_lb_target_group" "app_tg" {
-  name        = "ecs-app-tg-v2"
+  name        = "ecs-app-tg"
   port        = 3000
   protocol    = "HTTP"
   vpc_id      = aws_vpc.main.id
@@ -159,7 +159,7 @@ resource "aws_lb_listener" "app_listener" {
 # ECS Task Definition
 # -----------------------------
 resource "aws_ecs_task_definition" "app" {
-  family                   = "node-app-v2"
+  family                   = var.app_name
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
   cpu                      = "256"
@@ -167,7 +167,7 @@ resource "aws_ecs_task_definition" "app" {
   execution_role_arn       = aws_iam_role.ecs_task_execution_role.arn
 
   container_definitions = jsonencode([{
-    name      = "node-app-v2"
+    name      = var.app_name
     image     = "${aws_ecr_repository.app_repo.repository_url}:latest"
     essential = true
     portMappings = [{
@@ -196,7 +196,7 @@ resource "aws_ecs_task_definition" "app" {
 # ECS Service
 # -----------------------------
 resource "aws_ecs_service" "app" {
-  name            = "node-app-v2"
+  name            = var.app_name
   cluster         = aws_ecs_cluster.cluster.id
   task_definition = aws_ecs_task_definition.app.arn
   launch_type     = "FARGATE"
@@ -213,7 +213,7 @@ resource "aws_ecs_service" "app" {
 
   load_balancer {
     target_group_arn = aws_lb_target_group.app_tg.arn
-    container_name   = "node-app-v2"
+    container_name   = var.app_name
     container_port   = 3000
   }
 
@@ -232,7 +232,7 @@ resource "aws_appautoscaling_target" "ecs_scale_target" {
 }
 
 resource "aws_appautoscaling_policy" "scale_up" {
-  name               = "scale-up-v2"
+  name               = "scale-up"
   policy_type        = "TargetTrackingScaling"
   resource_id        = aws_appautoscaling_target.ecs_scale_target.resource_id
   scalable_dimension = aws_appautoscaling_target.ecs_scale_target.scalable_dimension
